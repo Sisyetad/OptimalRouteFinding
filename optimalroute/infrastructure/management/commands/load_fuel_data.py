@@ -36,6 +36,13 @@ class Command(BaseCommand):
         csv_path = options['csv_file']
         limit = options['limit']
         
+        # US states and Canadian provinces/territories
+        US_STATES = {
+            'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'
+        }
+        CA_PROVINCES = {
+            'AB','BC','MB','NB','NL','NS','NT','NU','ON','PE','QC','SK','YT','TX','NV'
+        }
         # Initialize Geocoder
         geolocator = Nominatim(user_agent="optimal_route_app_loader_v1", timeout=10)
         
@@ -62,16 +69,29 @@ class Command(BaseCommand):
                         rack_id = int(row['Rack ID'])
                         price = float(row['Retail Price'])
                         
-                        # Construct Query: "City, State, USA"
-                        query = f"{city}, {state}, USA"
+                        # Determine country and construct query
+                        if state in US_STATES:
+                            country = "USA"
+                        elif state in CA_PROVINCES:
+                            country = "Canada"
+                        else:
+                            # Not a US state or Canadian province, skip
+                            continue
+                        query = f"{city}, {state}, {country}"
+
+                        # Check if station already exists in DB (by name, city, state)
+                        exists = FuelStationModel.objects.filter(
+                            truckstop_name=name,
+                            city=city,
+                            state=state
+                        ).exists()
+                        if exists:
+                            continue
                         
                         coords = None
-                        
                         # Check Cache
                         if query in city_cache:
                             base_coords = city_cache[query]
-                            # Add jitter only if we are using city centroid
-                            # Approx 3-5 miles jitter to simulate distribution around city
                             lat_jitter = random.uniform(-0.05, 0.05)
                             lon_jitter = random.uniform(-0.05, 0.05)
                             coords = (base_coords[0] + lat_jitter, base_coords[1] + lon_jitter)
@@ -83,8 +103,7 @@ class Command(BaseCommand):
                                 if location:
                                     city_cache[query] = (location.latitude, location.longitude)
                                     coords = (location.latitude, location.longitude)
-                                    # Sleep to respect Nominatim usage policy (max 1 req/sec)
-                                    time.sleep(1.1) 
+                                    time.sleep(1.1)
                                 else:
                                     self.stdout.write(self.style.WARNING(f"Could not geocode {query}"))
                                     continue
