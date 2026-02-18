@@ -130,3 +130,4 @@ class DjangoFuelRepository(IFuelRepository):
                 )
             )
         FuelStationModel.objects.bulk_create(models_to_create)
+
