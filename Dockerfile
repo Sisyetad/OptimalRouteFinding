@@ -26,4 +26,4 @@ USER appuser
 EXPOSE 8000
 
 # Run migrations and start server
-CMD ["sh", "-c", "cd optimalroute && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
+CMD ["sh", "-c", "cd optimalroute && python manage.py migrate && gunicorn config.asgi:application -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT"]
