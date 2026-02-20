@@ -20,3 +20,4 @@ django-environ
 geopy
 python-decouple
 h3
+aiohttp

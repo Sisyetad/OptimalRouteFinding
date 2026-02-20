@@ -5,7 +5,7 @@ export async function fetchRoute(
   end_location: string
 ): Promise<RouteResponse> {
   // Use your backend server URL directly (adjust if needed)
-  const res = await fetch("http://localhost:8000/api/v1/plan-trip/", {
+  const res = await fetch("https://optimalroute.onrender.com/api/v1/plan-trip/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ start_location, end_location }),
