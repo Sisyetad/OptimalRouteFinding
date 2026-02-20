@@ -200,9 +200,6 @@ python manage.py test domain.services.test_optimization_engine
 ### **Future Enhancements**
 
 - **Dynamic Programming optimization** for better multi-stop strategies
-- **Redis caching** for route results (keyed by hash of start-end)
-- **PostGIS spatial indexing** for sub-millisecond station queries
-- **Rate limiting** and **circuit breakers** for external API calls
 - **Celery background tasks** for long routes
 - **OpenAPI/Swagger** documentation
 - **Docker deployment** with `docker-compose`
