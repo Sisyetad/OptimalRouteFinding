@@ -36,7 +36,7 @@ MAPBOX_ACCESS_TOKEN = env("MAPBOX_ACCESS_TOKEN")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env('DEBUG')
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'optimalroute.onrender.com',]
 
 
 # Application definition
@@ -117,9 +117,12 @@ REST_FRAMEWORK = {
     }
 }
 
+CORS_ALLOW_CREDENTIALS = True
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://plan-trip-sage.vercel.app/"
 ]
 
 CORS_ALLOW_HEADERS = [

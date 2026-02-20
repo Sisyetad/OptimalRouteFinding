@@ -96,7 +96,7 @@ class FuelOptimizationEngine:
         end_idx = len(all_nodes) - 1
         if end_idx not in min_costs:
             # If unreachable even for Dijkstra
-            return [], -1.0, [], 0.0 
+            return [], -1.0, [], 0.0, []
             
         path_indices = []
         curr = end_idx
