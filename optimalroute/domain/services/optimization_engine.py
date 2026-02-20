@@ -145,7 +145,15 @@ class FuelOptimizationEngine:
         # 5. Generate Tracker
         tracker = self._generate_tracker(path_indices, all_nodes, min_costs)
 
-        return fuel_stops, round(final_cost, 2), tracker, round(total_gallons, 2)
+        refuel_path = self._build_refuel_path(path_indices, all_nodes)
+
+        return (
+            fuel_stops,
+            round(final_cost, 2),
+            tracker,
+            round(total_gallons, 2),
+            refuel_path
+        )
 
     def _calculate_score(self, station: FuelStation, avg_price: float) -> float:
         norm_price = station.retail_price / avg_price if avg_price else 1.0
@@ -199,3 +207,22 @@ class FuelOptimizationEngine:
                 })
                 
         return tracker
+    
+    def _build_refuel_path(self, path_indices, all_nodes):
+        """
+        Converts optimal path into step-by-step refuel decisions.
+        """
+        route = []
+
+        for i, idx in enumerate(path_indices):
+            node = all_nodes[idx]
+
+            route.append({
+                "node_type": "start" if node.id == -1 else "end" if node.id == -2 else "station",
+                "name": node.truckstop_name,
+                "mile_marker": round(node.route_mile_marker, 2),
+                "price": node.retail_price,
+                "refuel": True if idx not in (0, len(all_nodes) - 1) else False
+            })
+
+        return route
