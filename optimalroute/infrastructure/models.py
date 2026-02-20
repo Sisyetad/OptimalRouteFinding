@@ -13,6 +13,7 @@ class FuelStationModel(models.Model):
     
     class Meta:
         db_table = 'fuel_stations'
+        unique_together = ("truckstop_name", "address", "city", "state")
         indexes = [
             models.Index(fields=['state']),
             models.Index(fields=['retail_price']),

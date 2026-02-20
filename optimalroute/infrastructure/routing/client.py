@@ -43,9 +43,12 @@ class OpenRouteServiceClient(IRoutingService):
         
         body = {
             "coordinates": [[start_coords[1], start_coords[0]], [end_coords[1], end_coords[0]]],
-            "format": "json"
+            "preference": "recommended",
+            "options": {
+                "avoid_features": ["highways"]
+            }
         }
-        
+
         try:
             response = requests.post(directions_url, json=body, headers=headers)
             response.raise_for_status()

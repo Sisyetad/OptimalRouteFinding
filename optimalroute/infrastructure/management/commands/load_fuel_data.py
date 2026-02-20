@@ -1,167 +1,179 @@
-"""
-Geocoding Logic Explanation:
-The source CSV (fuel-prices-for-be-assessment.csv) contains only:
-Truckstop ID, Name, Address (often Highway Exits), City, State, Rack ID, Price.
-
-It lacks explicit Latin/Long coordinates.
-
-To solve this, we use a 2-tiered Geocoding strategy:
-1. Primary: Nominatim (OpenStreetMap) API to find coordinates for "City, State, USA".
-   - We cache city coordinates to minimize API calls (thousands of stations share cities).
-   - We add random "jitter" (+/- 0.05 degrees) to separate stations in the same city visually,
-     since we don't have exact street addresses for highway exits.
-2. Fallback: If geocoding fails, we skip the record.
-
-Note: In a production environment, we would use a paid Geocoding API (Google/Mapbox)
-to resolve the exact "Address" field for better precision than just City center + jitter.
-"""
-
 import csv
-import time
+import asyncio
 import random
 import h3
+import aiohttp
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from infrastructure.models import FuelStationModel
-from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderTimedOut
+from asgiref.sync import sync_to_async
+
 
 class Command(BaseCommand):
-    help = 'Load fuel data from CSV and geocode addresses using City centroids + Jitter'
+    help = "Fast async CSV loader with Mapbox, idempotent + optimized"
 
     def add_arguments(self, parser):
-        parser.add_argument('csv_file', type=str, help='Path to the CSV file')
-        parser.add_argument('--limit', type=int, default=0, help='Limit number of rows to process')
+        parser.add_argument("csv_file", type=str)
+        parser.add_argument("--limit", type=int, default=0)
+        parser.add_argument("--concurrency", type=int, default=10)
 
     def handle(self, *args, **options):
-        csv_path = options['csv_file']
-        limit = options['limit']
-        
-        # US states and Canadian provinces/territories
-        US_STATES = {
-            'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'
-        }
-        CA_PROVINCES = {
-            'AB','BC','MB','NB','NL','NS','NT','NU','ON','PE','QC','SK','YT','TX','NV'
-        }
-        # Initialize Geocoder
-        geolocator = Nominatim(user_agent="optimal_route_app_loader_v1", timeout=10)
-        
-        # Cache to storing city coordinates: "City, State" -> (lat, lon)
+        asyncio.run(self.async_handle(options))
+
+    async def async_handle(self, options):
+        csv_path = options["csv_file"]
+        limit = options["limit"]
+        concurrency = options["concurrency"]
+
+        self.stdout.write(f"🚀 Starting optimized async load from {csv_path}")
+
+        # --- Load CSV ---
+        try:
+            with open(csv_path, "r", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+        except FileNotFoundError:
+            self.stdout.write(self.style.ERROR(f"File not found: {csv_path}"))
+            return
+
+        if limit > 0:
+            rows = rows[:limit]
+
+        # --- Preload existing keys (IDEMPOTENCY FAST PATH) ---
+        existing = await sync_to_async(set)(
+            FuelStationModel.objects.values_list(
+                "truckstop_name", "address", "city", "state"
+            )
+        )
+
+        def make_key(r):
+            return (
+                r["Truckstop Name"].strip(),
+                r["Address"].strip(),
+                r["City"].strip(),
+                r["State"].strip(),
+            )
+
+        rows = [r for r in rows if make_key(r) not in existing]
+
+        self.stdout.write(f"📦 Rows after deduplication: {len(rows)}")
+
+        # --- City cache (BIG WIN) ---
         city_cache = {}
-        
+
+        semaphore = asyncio.Semaphore(concurrency)
         station_objects = []
         count = 0
-        
-        self.stdout.write(f"Starting load from {csv_path}...")
 
-        try:
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                
-                for row in reader:
-                    if limit > 0 and count >= limit:
-                        break
-                    
+        # --- Async Mapbox call ---
+        async def geocode(session, city, state):
+            key = f"{city}_{state}"
+
+            if key in city_cache:
+                return city_cache[key]
+
+            url = f"https://api.mapbox.com/geocoding/v5/mapbox.places/{city},{state}.json"
+
+            params = {
+                "access_token": settings.MAPBOX_ACCESS_TOKEN,
+                "limit": 1,
+            }
+
+            try:
+                async with session.get(url, params=params, timeout=10) as resp:
+                    if resp.status != 200:
+                        return None
+
+                    data = await resp.json()
+                    features = data.get("features")
+
+                    if not features:
+                        return None
+
+                    lon, lat = features[0]["geometry"]["coordinates"]
+
+                    coords = (lat, lon)
+                    city_cache[key] = coords
+                    return coords
+
+            except Exception:
+                return None
+
+        # --- Worker ---
+        async def process_row(session, row):
+            nonlocal count
+
+            async with semaphore:
+                try:
+                    name = row["Truckstop Name"].strip()
+                    address = row["Address"].strip()
+                    city = row["City"].strip()
+                    state = row["State"].strip()
+                    rack_id = int(row["Rack ID"])
+                    price = float(row["Retail Price"])
+
+                    coords = await geocode(session, city, state)
+
+                    if not coords:
+                        return
+
+                    # --- jitter ---
+                    lat = coords[0] + random.uniform(-0.02, 0.02)
+                    lon = coords[1] + random.uniform(-0.02, 0.02)
+
+                    # --- H3 ---
                     try:
-                        name = row['Truckstop Name']
-                        city = row['City'].strip()
-                        state = row['State'].strip()
-                        rack_id = int(row['Rack ID'])
-                        price = float(row['Retail Price'])
-                        
-                        # Determine country and construct query
-                        if state in US_STATES:
-                            country = "USA"
-                        elif state in CA_PROVINCES:
-                            country = "Canada"
-                        else:
-                            # Not a US state or Canadian province, skip
-                            continue
-                        query = f"{city}, {state}, {country}"
-
-                        # Check if station already exists in DB (by name, city, state)
-                        exists = FuelStationModel.objects.filter(
-                            truckstop_name=name,
-                            city=city,
-                            state=state
-                        ).exists()
-                        if exists:
-                            continue
-                        
-                        coords = None
-                        # Check Cache
-                        if query in city_cache:
-                            base_coords = city_cache[query]
-                            lat_jitter = random.uniform(-0.05, 0.05)
-                            lon_jitter = random.uniform(-0.05, 0.05)
-                            coords = (base_coords[0] + lat_jitter, base_coords[1] + lon_jitter)
-                        else:
-                            # Fetch from API
-                            self.stdout.write(f"Geocoding new city: {query}")
-                            try:
-                                location = geolocator.geocode(query)
-                                if location:
-                                    city_cache[query] = (location.latitude, location.longitude)
-                                    coords = (location.latitude, location.longitude)
-                                    time.sleep(1.1)
-                                else:
-                                    self.stdout.write(self.style.WARNING(f"Could not geocode {query}"))
-                                    continue
-                            except GeocoderTimedOut:
-                                self.stdout.write(self.style.WARNING(f"Timeout geocoding {query}, sleeping..."))
-                                time.sleep(2)
-                                continue
-
-                        
-                        # Calculate H3 Index
+                        h3_index = (
+                            h3.latlng_to_cell(lat, lon, 7)
+                            if hasattr(h3, "latlng_to_cell")
+                            else h3.geo_to_h3(lat, lon, 7)
+                        )
+                    except Exception:
                         h3_index = ""
-                        if coords:
-                            # Resolution 4 ~ 22km edge length
-                            try:
-                                if hasattr(h3, 'latlng_to_cell'):
-                                    h3_index = h3.latlng_to_cell(coords[0], coords[1], 4)
-                                else:
-                                    h3_index = h3.geo_to_h3(coords[0], coords[1], 4)
-                            except Exception:
-                                pass
 
-                            station = FuelStationModel(
-                                truckstop_name=name,
-                                address=row['Address'],
-                                city=city,
-                                state=state,
-                                rack_id=rack_id,
-                                retail_price=price,
-                                latitude=coords[0],
-                                longitude=coords[1],
-                                h3_index=h3_index
-                            )
-                            station_objects.append(station)
-                            
-                            # Batch insert every 1000 records
-                            if len(station_objects) >= 1000:
-                                self.stdout.write(f"Batch inserting {len(station_objects)} records...")
-                                FuelStationModel.objects.bulk_create(station_objects)
-                                station_objects = []  # Reset batch
-                                
-                            count += 1
-                            
-                            if count % 50 == 0:
-                                self.stdout.write(f"Processed {count} stations...")
-                                
-                    except (ValueError, KeyError) as e:
-                        self.stdout.write(self.style.ERROR(f"Skipping bad row: {row} - {e}"))
-                        continue
-                    except Exception as e:
-                        self.stdout.write(self.style.ERROR(f"Unexpected error: {e}"))
-                        # continue
+                    station_objects.append(
+                        FuelStationModel(
+                            truckstop_name=name,
+                            address=address,
+                            city=city,
+                            state=state,
+                            rack_id=rack_id,
+                            retail_price=price,
+                            latitude=lat,
+                            longitude=lon,
+                            h3_index=h3_index,
+                        )
+                    )
 
-            # Insert remaining records
-            if station_objects:
-                self.stdout.write(f"Inserting remaining {len(station_objects)} records...")
-                FuelStationModel.objects.bulk_create(station_objects)
-            
-            self.stdout.write(self.style.SUCCESS(f"Successfully finished loading. Total processed: {count}"))
-                
-        except FileNotFoundError:
-             self.stdout.write(self.style.ERROR(f"File not found: {csv_path}"))
+                    count += 1
+
+                    # --- Batch insert ---
+                    if len(station_objects) >= 1000:
+                        await flush()
+
+                    if count % 100 == 0:
+                        self.stdout.write(f"Processed {count}")
+
+                except Exception:
+                    pass
+
+        # --- Bulk insert ---
+        async def flush():
+            nonlocal station_objects
+            if not station_objects:
+                return
+
+            await sync_to_async(FuelStationModel.objects.bulk_create)(
+                station_objects,
+                ignore_conflicts=True,
+            )
+            station_objects = []
+
+        # --- Run ---
+        async with aiohttp.ClientSession() as session:
+            await asyncio.gather(*(process_row(session, r) for r in rows))
+
+        await flush()
+
+        self.stdout.write(
+            self.style.SUCCESS(f"✅ Finished. Inserted: {count}")
+        )
