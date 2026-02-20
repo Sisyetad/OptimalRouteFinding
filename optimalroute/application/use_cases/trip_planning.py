@@ -25,7 +25,7 @@ class PlanTripUseCase:
         )
         
         # 3. Optimize Fuel Stops with new Dijkstra-based engine
-        stops, total_cost, tracker, total_gallons = self.optimizer.plan_trip(
+        stops, total_cost, tracker, total_gallons, refuel_path = self.optimizer.plan_trip(
             route.total_distance_miles, stations
         )
         
@@ -54,5 +54,6 @@ class PlanTripUseCase:
                 }
                 for s in stops
             ],
-            "per_mile_progression": tracker
+            "per_mile_progression": tracker,
+            "refuel_path": refuel_path
         }
