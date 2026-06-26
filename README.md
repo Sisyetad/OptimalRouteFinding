@@ -104,6 +104,28 @@ python manage.py load_fuel_data ../fuel-prices-for-be-assessment.csv --limit 100
 python manage.py runserver 0.0.0.0:8000
 ```
 
+## 🗂️ **Station Enrichment CSV Pipeline**
+
+Use the enrichment command to normalize station metadata and store station contact details directly on each station row.
+
+```bash
+cd optimalroute
+python manage.py export_station_enrichment_csvs ../Data/merged_all_unique.csv --output-dir ../Data/data_exports --country-name Ethiopia --country-code et
+```
+
+Generated files:
+
+- `stations.csv`
+- `fuel_types.csv`
+- `station_fuel_prices.csv`
+- `payment_methods.csv`
+- `station_payment_methods.csv`
+- `scrape_summary.json`
+
+Station rows include `contact_email`, `contact_emails`, `contact_phone`, and `contact_phones` when they can be discovered.
+
+The scraper can extract contact details from HTML pages, PDFs, DOCX files, plain text files, and best-effort image OCR when the OCR binary is available.
+
 ---
 
 ## 🔑 **Configuration**
