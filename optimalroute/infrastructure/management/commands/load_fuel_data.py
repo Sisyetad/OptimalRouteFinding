@@ -6,6 +6,7 @@ import aiohttp
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from infrastructure.models import FuelStationModel
+from infrastructure.repositories import DjangoFuelRepository
 from asgiref.sync import sync_to_async
 
 
@@ -120,12 +121,12 @@ class Command(BaseCommand):
                     lat = coords[0] + random.uniform(-0.02, 0.02)
                     lon = coords[1] + random.uniform(-0.02, 0.02)
 
-                    # --- H3 ---
+                    # --- H3 (kept in sync with DjangoFuelRepository) ---
                     try:
                         h3_index = (
-                            h3.latlng_to_cell(lat, lon, 7)
+                            h3.latlng_to_cell(lat, lon, DjangoFuelRepository.H3_RESOLUTION)
                             if hasattr(h3, "latlng_to_cell")
-                            else h3.geo_to_h3(lat, lon, 7)
+                            else h3.geo_to_h3(lat, lon, DjangoFuelRepository.H3_RESOLUTION)
                         )
                     except Exception:
                         h3_index = ""

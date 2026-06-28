@@ -33,3 +33,4 @@ class TripPlanResponseSerializer(serializers.Serializer):
     fuel_summary = FuelSummarySerializer()
     stops = FuelStationSerializer(many=True)
     per_mile_progression = ProgressionItemSerializer(many=True)
+    refuel_path = serializers.ListField()
