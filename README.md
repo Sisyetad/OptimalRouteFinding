@@ -75,58 +75,40 @@ Uses a **Dijkstra Shortest Path Algorithm**:
 
 ### **Prerequisites**
 
-- Python 3.10+
+- Python 3.12+
 - Virtual environment (`venv`)
 
 ### **Setup**
 
 ```bash
 # 1. Clone the repository
-cd /path/to/OptimalRouteFinding
+cd /path/to/OptimalRouteFinding/optimalroute
 
 # 2. Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
-# 3. Install dependencies
+# 3. Install dependenciesADMIN_EMAIL
 pip install -r requirements.txt
 
-# 4. Navigate to project directory
-cd optimalroute
+# 4. Copy .env.example to .env and set your enviroment variables
+cp .env.example .env
 
+nano .env
+
+# 4. Navigate to project directory
+docker build -t sisyetad/optimalroute:latest .
+
+docker compose up -d
 # 5. Apply migrations
-python manage.py migrate
+docker exec -it django_app python manage.py migrate
 
 # 6. Load fuel station data (with geocoding)
-python manage.py load_fuel_data ../fuel-prices-for-be-assessment.csv --limit 100
+docker exec -it django_app python manage.py load_fuel_data ../fuel-prices-for-be-assessment.csv --limit 100
 
-# 7. Run the server
-python manage.py runserver 0.0.0.0:8000
+# 7. Running in the following host
+http://127.0.0.0:8000/api/v1/plan-trip
 ```
-
-## 🗂️ **Station Enrichment CSV Pipeline**
-
-Use the enrichment command to normalize station metadata and store station contact details directly on each station row.
-
-```bash
-cd optimalroute
-python manage.py export_station_enrichment_csvs ../Data/merged_all_unique.csv --output-dir ../Data/data_exports --country-name Ethiopia --country-code et
-```
-
-Generated files:
-
-- `stations.csv`
-- `fuel_types.csv`
-- `station_fuel_prices.csv`
-- `payment_methods.csv`
-- `station_payment_methods.csv`
-- `scrape_summary.json`
-
-Station rows include `contact_email`, `contact_emails`, `contact_phone`, and `contact_phones` when they can be discovered.
-
-The scraper can extract contact details from HTML pages, PDFs, DOCX files, plain text files, and best-effort image OCR when the OCR binary is available.
-
----
 
 ## 🔑 **Configuration**
 
@@ -134,10 +116,19 @@ Update `.env` in the root directory:
 
 ```ini
 ORS_API_KEY=your_openrouteservice_api_key_here
+MAPBOX_ACCESS_TOKEN=your_mapbox_api_token
 DEBUG=True
 SECRET_KEY=your-secret-key
-DATABASE_URL=sqlite:///db.sqlite3  # Or postgres://...
+DATABASE_NAME=optimalroute
+DATABASE_USER=optimalroute
+DATABASE_PASSWORD=password123
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_URL= # Or postgres://...
 REDIS_URL=redis://localhost:6379/1  # Optional
+ADMIN_USERNAME=admin
+ADMIN_EMAIL=admin@gmail.com
+ADMIN_PASSWORD=123
 ```
 
 ---
@@ -166,6 +157,20 @@ Or use coordinates:
   "start_location": "34.0522, -118.2437",
   "end_location": "40.7128, -74.0060"
 }
+```
+
+```json
+  {
+    "start_location": "32.7767, -96.7970",
+    "end_location": "29.7604, -95.3698"
+  }
+```
+
+```json
+  {
+    "start_location": "123 Main St, Dallas, TX 75201",
+    "end_location": "456 Oak St, Houston, TX 77002"
+  }
 ```
 
 ### **Response**
@@ -202,90 +207,3 @@ Or use coordinates:
   ]
 }
 ```
-
----
-
-## 🧪 **Testing**
-
-```bash
-# Run all tests
-python manage.py test
-
-# Run specific test modules
-python manage.py test domain.services.test_optimization_engine
-```
-
----
-
-## 🛠️ **Advanced Features**
-
-### **Future Enhancements**
-
-- **Dynamic Programming optimization** for better multi-stop strategies
-- **Celery background tasks** for long routes
-- **OpenAPI/Swagger** documentation
-- **Docker deployment** with `docker-compose`
-
----
-
-## 📊 **Performance Characteristics**
-
-| Metric | Value |
-|--------|-------|
-| **Route Query** | ~500ms (inc. geocoding) |
-| **Fuel Station Filtering** | O(n) where n = stations in corridor |
-| **Optimization Algorithm** | O(n²) worst case, O(n log n) typical |
-| **Database Queries** | 1-2 per request (no N+1) |
-
----
-
-## 📚 **Dependencies**
-
-- **Django 6.x**
-- **Django REST Framework**
-- **polyline** (for encoding/decoding routes)
-- **haversine** (for distance calculations)
-- **geopy** (for geocoding)
-- **requests** (for external API calls)
-- **environ** (for environment variable management)
-
----
-
-## 👨‍💻 **Development Notes**
-
-### **Clean Architecture Principles Followed**
-
-✅ **Domain layer is pure Python** (no Django imports)  
-✅ **Dependency Inversion**: Infrastructure implements domain interfaces  
-✅ **Thin controllers**: Views delegate to use cases  
-✅ **Business logic in domain/application layers**  
-
-### **Running Locally**
-
-```bash
-# With virtual environment activated
-cd optimalroute
-python manage.py runserver
-```
-
----
-
-## 📝 **License**
-
-MIT
-
----
-
-## 🤝 **Contributing**
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📧 **Contact**
-
-For questions or support, please open an issue on GitHub.

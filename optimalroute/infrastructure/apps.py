@@ -4,6 +4,8 @@ import sys
 
 from django.apps import AppConfig
 
+from config.command.create_superuser import Command
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,5 +27,9 @@ class InfrastructureConfig(AppConfig):
             from .bootstrap import load_initial_fuel_data
 
             load_initial_fuel_data()
+
+            command = Command()
+            command.handle()
+
         except Exception:
             logger.exception("Failed to load initial fuel data during startup")
