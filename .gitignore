@@ -4,7 +4,6 @@ __pycache__/
 optimalroute/.env
 optimalroute/.dockerignore
 optimalroute/staticfiles/*
-TOOLS_REFERENCE.md
 DEBUGGING.md
 COMPLETION_STATUS.md
 TECHNICAL_DEEP_DIVE.md
